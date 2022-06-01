@@ -11,7 +11,7 @@ const W: u32 = 1 << 12;
 
 #[wasm_bindgen]
 pub fn run() {
-    let window = window().unwrap();
+    let window = leak(window().unwrap());
 
     let document = window.document().unwrap();
     let canvas = document
@@ -21,7 +21,6 @@ pub fn run() {
         .dyn_into::<HtmlCanvasElement>()
         .map_err(|_| ())
         .unwrap();
-    canvas.set_height(window.inner_height().unwrap().as_f64().unwrap() as u32);
     canvas.set_width(W);
     let drawing_ctx = canvas
         .get_context("2d")
@@ -70,12 +69,22 @@ pub fn run() {
                             sample.len() as u32,
                         )
                         .expect_throw("DCT line data to image");
+                        let canvas = drawing_ctx.canvas().unwrap();
+                        let window_height = window.inner_height().unwrap().as_f64().unwrap() as u32;
+                        if window_height != canvas.height() {
+                            let preserve = drawing_ctx.get_image_data(
+                                0.,
+                                0.,
+                                canvas.width() as f64,
+                                canvas.height() as f64,
+                            );
+                            canvas.set_height(window_height);
+                            if let Ok(preserve) = preserve {
+                                drawing_ctx.put_image_data(&preserve, 0., 0.).ok();
+                            }
+                        }
                         drawing_ctx
-                            .draw_image_with_html_canvas_element(
-                                &drawing_ctx.canvas().unwrap(),
-                                0.0,
-                                1.0,
-                            )
+                            .draw_image_with_html_canvas_element(&canvas, 0.0, 1.0)
                             .expect_throw("move view");
                         drawing_ctx
                             .put_image_data(&line, 0., 0.)
