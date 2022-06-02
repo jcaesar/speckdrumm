@@ -155,15 +155,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustdct"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "620247053ace0eddd3e607c66423537e45c3ae36008e6d6fac1552f51ea1a63a"
-dependencies = [
- "rustfft",
-]
-
-[[package]]
 name = "rustfft"
 version = "6.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -189,7 +180,8 @@ version = "0.1.0"
 dependencies = [
  "itertools",
  "js-sys",
- "rustdct",
+ "num-complex",
+ "rustfft",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "web-sys",

@@ -1,5 +1,6 @@
 use itertools::Itertools;
-use rustdct::DctPlanner;
+use num_complex::Complex;
+use rustfft::FftPlanner;
 use wasm_bindgen::{prelude::*, Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, *};
 
@@ -9,8 +10,8 @@ fn leak<T>(t: T) -> &'static mut T {
 
 const W: u32 = 1 << 12;
 
-#[wasm_bindgen]
-pub fn run() {
+#[wasm_bindgen(start)]
+pub fn main() {
     let window = leak(window().unwrap());
 
     let document = window.document().unwrap();
@@ -48,24 +49,13 @@ pub fn run() {
                 leak(Closure::<dyn FnMut(_)>::wrap(Box::new(
                     |sample: JsValue| {
                         let sample: AudioProcessingEvent = sample.into();
-                        let mut sample = sample
+                        let sample = sample
                             .input_buffer()
                             .expect_throw("sample input buffer")
                             .get_channel_data(0)
                             .expect_throw("sample channel 0 data");
-                        let mut planner = DctPlanner::new();
-                        let dct = planner.plan_dct2(sample.len());
-                        dct.process_dct2(&mut sample);
-                        let mut line = vec![0; sample.len() * 4];
-                        for (&s, (r, g, b, a)) in sample.iter().zip(line.iter_mut().tuples()) {
-                            *a = 255;
-                            let s = s * s * 127.;
-                            *r = (s * 0.427).min(255.) as u8;
-                            *g = (s * 0.122).min(255.) as u8;
-                            *b = (s * 0.149).min(255.) as u8;
-                        }
                         let line = ImageData::new_with_u8_clamped_array(
-                            Clamped(&line),
+                            Clamped(&marble(&sample)),
                             sample.len() as u32,
                         )
                         .expect_throw("DCT line data to image");
@@ -98,4 +88,33 @@ pub fn run() {
                 .connect_with_audio_node(&processor)
                 .expect_throw("connect audio processor");
         }) as Box<_>)));
+}
+
+// Proprietary meat smoking code
+fn marble(sample: &[f32]) -> Vec<u8> {
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(sample.len());
+    let mut sample = sample
+        .into_iter()
+        .map(|&s| Complex::new(s, 0.))
+        .collect::<Vec<_>>();
+    fft.process(&mut sample);
+    let mut line = vec![0; sample.len() * 4];
+    for (&s, (r, g, b, a)) in sample.iter().zip(line.iter_mut().tuples()) {
+        let i = ((s.norm_sqr() / 5. + 1.).log2() / 3. - (2. / 3.)).clamp(0., 2.);
+        let speck = (149., 31., 38.);
+        let schwarte = (234., 200., 186.);
+        let schwarz = (0., 0., 0.);
+        let (c0, c1, i) = if i < 1. {
+            (schwarz, schwarte, i)
+        } else {
+            (schwarte, speck, i - 1.)
+        };
+        let ni = 1. - i;
+        *a = 255;
+        *r = (c0.0 * ni + c1.0 * i) as u8;
+        *g = (c0.1 * ni + c1.1 * i) as u8;
+        *b = (c0.2 * ni + c1.2 * i) as u8;
+    }
+    line
 }
