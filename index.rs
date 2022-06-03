@@ -4,11 +4,13 @@ use rustfft::FftPlanner;
 use wasm_bindgen::{prelude::*, Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, *};
 
+const W: u32 = 1 << 12;
+
+// Most tutorials I've seen muck around with once_cell or lazy_static here.
+// I'll just spaghetti it out.
 fn leak<T>(t: T) -> &'static mut T {
     Box::leak(Box::new(t))
 }
-
-const W: u32 = 1 << 12;
 
 #[wasm_bindgen(start)]
 pub fn main() {
