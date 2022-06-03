@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 path = "index.rs"
 
 [dependencies]
+console_error_panic_hook = "0.1.7"
 itertools = "0.10.3"
 js-sys = "0.3.57"
 num-complex = "0.4.1"

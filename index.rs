@@ -14,6 +14,7 @@ fn leak<T>(t: T) -> &'static mut T {
 
 #[wasm_bindgen(start)]
 pub fn main() {
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     let window = leak(window().unwrap());
 
     let document = window.document().unwrap();
@@ -56,14 +57,15 @@ pub fn main() {
                             .expect_throw("sample input buffer")
                             .get_channel_data(0)
                             .expect_throw("sample channel 0 data");
-                        let line = ImageData::new_with_u8_clamped_array(
-                            Clamped(&marble(&sample)),
-                            sample.len() as u32,
-                        )
-                        .expect_throw("DCT line data to image");
                         let canvas = drawing_ctx.canvas().unwrap();
+                        let window_width =
+                            window.inner_width().unwrap().as_f64().unwrap() as u32 - 5;
                         let window_height = window.inner_height().unwrap().as_f64().unwrap() as u32;
-                        if window_height != canvas.height() {
+                        if window_width != canvas.width() {
+                            // Would have to scale to preserve...
+                            canvas.set_width(window_width);
+                            canvas.set_height(window_height);
+                        } else if window_height != canvas.height() {
                             let preserve = drawing_ctx.get_image_data(
                                 0.,
                                 0.,
@@ -75,6 +77,11 @@ pub fn main() {
                                 drawing_ctx.put_image_data(&preserve, 0., 0.).ok();
                             }
                         }
+                        let line = ImageData::new_with_u8_clamped_array(
+                            Clamped(&marble(&sample, window_width)),
+                            window_width,
+                        )
+                        .expect_throw("DCT line data to image");
                         drawing_ctx
                             .draw_image_with_html_canvas_element(&canvas, 0.0, 1.0)
                             .expect_throw("move view");
@@ -93,7 +100,7 @@ pub fn main() {
 }
 
 // Proprietary meat smoking code
-fn marble(sample: &[f32]) -> Vec<u8> {
+fn marble(sample: &[f32], outw: u32) -> Vec<u8> {
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(sample.len());
     let mut sample = sample
@@ -101,16 +108,42 @@ fn marble(sample: &[f32]) -> Vec<u8> {
         .map(|&s| Complex::new(s, 0.))
         .collect::<Vec<_>>();
     fft.process(&mut sample);
-    let mut line = vec![0; sample.len() * 4];
-    for (&s, (r, g, b, a)) in sample.iter().zip(line.iter_mut().tuples()) {
-        let i = ((s.norm_sqr() / 5. + 1.).log2() / 3. - (2. / 3.)).clamp(0., 2.);
+    // Intensity scaling
+    let is = sample
+        .iter()
+        .map(|s| ((s.norm_sqr() / 5. + 1.).log2() / 3. - (2. / 3.)).clamp(0., 2.))
+        .collect::<Vec<_>>();
+    let mut line = vec![0u8; outw as usize * 4];
+    let outw = outw as f32;
+    for (i, (r, g, b, a)) in line.iter_mut().tuples().enumerate() {
+        // ?
+        let i = i as f32 / 2.0f32.sqrt();
+        // Horizontal scaling + linear interpolation
+        let pos0 = i / outw;
+        let pos1 = (i + 1.) / outw;
+        let pos0 = pos0 * pos0 * sample.len() as f32;
+        let pos1 = pos1 * pos1 * sample.len() as f32;
+        let mut pixv = 0.;
+        let mut pixd = 0.;
+        for j in ((pos0 + 1.) as usize)..(pos1 as usize) {
+            pixv += is[j];
+            pixd += 1.;
+        }
+        pixv += is[pos0 as usize] * (1. - pos0.fract());
+        pixd += 1. - pos0.fract();
+        if (pos1 as usize) < is.len() {
+            pixv += is[pos1 as usize] * pos1.fract();
+            pixd += pos1.fract();
+        }
+        let pix = pixv / pixd;
+        // Color interpolation
         let speck = (149., 31., 38.);
         let schwarte = (234., 200., 186.);
         let schwarz = (0., 0., 0.);
-        let (c0, c1, i) = if i < 1. {
-            (schwarz, schwarte, i)
+        let (c0, c1, i) = if pix < 1. {
+            (schwarz, schwarte, pix)
         } else {
-            (schwarte, speck, i - 1.)
+            (schwarte, speck, pix - 1.)
         };
         let ni = 1. - i;
         *a = 255;
