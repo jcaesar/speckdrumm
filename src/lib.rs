@@ -24,7 +24,7 @@ pub fn init() {
     button
         .add_event_listener_with_callback(
             "click",
-            leak(Closure::<dyn FnMut()>::wrap(Box::new(main)))
+            leak(Closure::<dyn FnMut()>::wrap(Box::new(listen)))
                 .as_ref()
                 .dyn_ref()
                 .unwrap(),
@@ -33,8 +33,8 @@ pub fn init() {
     document.body().unwrap().append_child(&button).unwrap();
 }
 
-pub fn main() {
-    let window = leak(window().unwrap());
+fn listen() {
+    let window = window().unwrap();
     let document = window.document().unwrap();
     let body = document.body().unwrap();
     while let Some(child) = body.first_child() {
@@ -73,47 +73,9 @@ pub fn main() {
                 .create_script_processor_with_buffer_size(1 << 14)
                 .expect_throw("crate script processor");
             processor.set_onaudioprocess(
-                leak(Closure::<dyn FnMut(_)>::wrap(Box::new(
-                    |sample: JsValue| {
-                        let sample: AudioProcessingEvent = sample.into();
-                        let sample = sample
-                            .input_buffer()
-                            .expect_throw("sample input buffer")
-                            .get_channel_data(0)
-                            .expect_throw("sample channel 0 data");
-                        let canvas = drawing_ctx.canvas().unwrap();
-                        let window_width =
-                            window.inner_width().unwrap().as_f64().unwrap() as u32 - 5;
-                        let window_height = window.inner_height().unwrap().as_f64().unwrap() as u32;
-                        if window_width != canvas.width() {
-                            // Would have to scale to preserve...
-                            canvas.set_width(window_width);
-                            canvas.set_height(window_height);
-                        } else if window_height != canvas.height() {
-                            let preserve = drawing_ctx.get_image_data(
-                                0.,
-                                0.,
-                                canvas.width() as f64,
-                                canvas.height() as f64,
-                            );
-                            canvas.set_height(window_height);
-                            if let Ok(preserve) = preserve {
-                                drawing_ctx.put_image_data(&preserve, 0., 0.).ok();
-                            }
-                        }
-                        let line = ImageData::new_with_u8_clamped_array(
-                            Clamped(&marble(&sample, window_width)),
-                            window_width,
-                        )
-                        .expect_throw("DCT line data to image");
-                        drawing_ctx
-                            .draw_image_with_html_canvas_element(&canvas, 0.0, 1.0)
-                            .expect_throw("move view");
-                        drawing_ctx
-                            .put_image_data(&line, 0., 0.)
-                            .expect_throw("draw DCT line");
-                    },
-                )))
+                leak(Closure::<dyn FnMut(_)>::wrap(Box::new(|sample| {
+                    process_sample(sample, drawing_ctx)
+                })))
                 .as_ref()
                 .dyn_ref(),
             );
@@ -121,6 +83,40 @@ pub fn main() {
                 .connect_with_audio_node(&processor)
                 .expect_throw("connect audio processor");
         }) as Box<_>)));
+}
+
+fn process_sample(sample: JsValue, drawing_ctx: &CanvasRenderingContext2d) {
+    let sample: AudioProcessingEvent = sample.into();
+    let sample = sample
+        .input_buffer()
+        .expect_throw("sample input buffer")
+        .get_channel_data(0)
+        .expect_throw("sample channel 0 data");
+    let canvas = drawing_ctx.canvas().unwrap();
+    let window = window().unwrap();
+    let window_width = window.inner_width().unwrap().as_f64().unwrap() as u32 - 5;
+    let window_height = window.inner_height().unwrap().as_f64().unwrap() as u32;
+    if window_width != canvas.width() {
+        // Would have to scale to preserve...
+        canvas.set_width(window_width);
+        canvas.set_height(window_height);
+    } else if window_height != canvas.height() {
+        let preserve =
+            drawing_ctx.get_image_data(0., 0., canvas.width() as f64, canvas.height() as f64);
+        canvas.set_height(window_height);
+        if let Ok(preserve) = preserve {
+            drawing_ctx.put_image_data(&preserve, 0., 0.).ok();
+        }
+    }
+    let line =
+        ImageData::new_with_u8_clamped_array(Clamped(&marble(&sample, window_width)), window_width)
+            .expect_throw("DCT line data to image");
+    drawing_ctx
+        .draw_image_with_html_canvas_element(&canvas, 0.0, 1.0)
+        .expect_throw("move view");
+    drawing_ctx
+        .put_image_data(&line, 0., 0.)
+        .expect_throw("draw FFT line");
 }
 
 // Proprietary meat smoking code
