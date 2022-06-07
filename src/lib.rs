@@ -13,18 +13,42 @@ fn leak<T>(t: T) -> &'static mut T {
 }
 
 #[wasm_bindgen(start)]
-pub fn main() {
+pub fn init() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-    let window = leak(window().unwrap());
-
+    let window = window().unwrap();
     let document = window.document().unwrap();
+    let button = document.create_element("input").unwrap();
+    let button = button.dyn_into::<HtmlInputElement>().unwrap();
+    button.set_type("button");
+    button.set_value("Start");
+    button
+        .add_event_listener_with_callback(
+            "click",
+            leak(Closure::<dyn FnMut()>::wrap(Box::new(main)))
+                .as_ref()
+                .dyn_ref()
+                .unwrap(),
+        )
+        .unwrap();
+    document.body().unwrap().append_child(&button).unwrap();
+}
+
+pub fn main() {
+    let window = leak(window().unwrap());
+    let document = window.document().unwrap();
+    let body = document.body().unwrap();
+    while let Some(child) = body.first_child() {
+        body.remove_child(&child).unwrap();
+    }
     let canvas = document
-        .get_element_by_id("canvas")
-        .expect_throw("get canvas");
-    let canvas: HtmlCanvasElement = canvas
+        .create_element("canvas")
+        .expect_throw("Create canvas");
+    let canvas = canvas
         .dyn_into::<HtmlCanvasElement>()
         .map_err(|_| ())
         .unwrap();
+    body.append_child(&canvas).expect_throw("Add canvas");
+
     canvas.set_width(W);
     let drawing_ctx = canvas
         .get_context("2d")

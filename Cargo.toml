@@ -16,7 +16,7 @@ wasm-bindgen = "0.2.80"
 
 [dependencies.web-sys]
 version = "0.3.57"
-features = ["AudioContext", "MediaStream", "MediaDevices", "Window", "Navigator", "console", "MediaStreamConstraints", "MediaStreamAudioSourceNode", "ScriptProcessorNode", "AudioBuffer", "HtmlCanvasElement", "CanvasRenderingContext2d", "Document", "AudioProcessingEvent", "ImageData"]
+features = ["AudioContext", "MediaStream", "MediaDevices", "Window", "Navigator", "console", "MediaStreamConstraints", "MediaStreamAudioSourceNode", "ScriptProcessorNode", "AudioBuffer", "HtmlCanvasElement", "CanvasRenderingContext2d", "Document", "AudioProcessingEvent", "ImageData", "HtmlInputElement"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.2"
